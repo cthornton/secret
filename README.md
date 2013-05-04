@@ -8,32 +8,32 @@ The secret files gem includes some fun over-engineering with file locking!
 ## Usage
 Add to your Gemfile:
 
-    ```ruby
-    gem 'secret'
-    ```
+```ruby
+gem 'secret'
+```
 
 Now you should set up your "default" container in an initializer:
 
-    ```ruby
-    Secret.configure_default 'path/to/secret/dir'
-    ```
+```ruby
+Secret.configure_default 'path/to/secret/dir'
+```
 
 Finally, you should now be able to put stuff into the secret directory, or read contents!
 
-    ```ruby
-    secret = Secret.default
+```ruby
+secret = Secret.default
 
-    # Save the key
-    secret.some_key.stash "ThisIsSomeKey"
+# Save the key
+secret.some_key.stash "ThisIsSomeKey"
 
-    # Get the key
-    puts secret.some_key.contents
+# Get the key
+puts secret.some_key.contents
 
-    # Manually seek through the file
-    secret.some_key.stream do |f|
-        f.seek 1, IO::SEEK_CUR
-    end
-    ```
+# Manually seek through the file
+secret.some_key.stream do |f|
+    f.seek 1, IO::SEEK_CUR
+end
+```
 
 ## How Secure is It?
 Ths is only *somewhat* secure and will provide protection against:

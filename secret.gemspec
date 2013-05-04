@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.email         = ["rmdirbin@gmail.com"]
   spec.description   = %q{Keeps your files more secure by ensuring saved files are chmoded 0700 by the same user who is running the process.}
   spec.summary       = %q{Keeps files more secure on server environments}
-  spec.homepage      = ""
+  spec.homepage      = "https://github.com/cgthornt/secret"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files`.split($/)
