@@ -7,9 +7,24 @@ require 'secret'
 Secret.configure_default 'secrets'
 container = Secret.default
 
-container.stash "key.crt", "The contents of this key!"
+file = container.file "key.crt"
+#file.delete!
+unless file.encrypted?
+  puts "Encrypting contents of file..."
+  file.stash_encrypted "This is some secret text!", "password"
+  puts "File contents: #{file.contents}"
+  
+  puts "Changing passphrase..."
+  file.change_encryption_passphrase! "password", "password2"
+  
+  # puts "This should result in an error..."
+  puts file.contents
+else
+  puts "Decrypting file contents..."
+  file.decrypt! "password2"
+  puts "Decrypted contents: " + file.contents
+end
 
-puts "Contents of key: '#{container.contents 'key.crt'}'"
 
 
 

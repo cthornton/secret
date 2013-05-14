@@ -1,4 +1,5 @@
 require "secret/version"
+require "secret/encryption"
 require "secret/file"
 require "secret/container"
 
@@ -8,7 +9,7 @@ module Secret
   CHMOD_MODE = 0700
   
   # The file extension for secret files
-  FILE_EXT = ".sfile"
+  FILE_EXT = ".sf"
   
   # Gets the default container
   # @return [Secret::Container] the default container
@@ -29,6 +30,8 @@ module Secret
   end
 
   class FileUnreadableError < Exception; end
+  
+  class FileEncryptedError < Exception; end
 
 
 end

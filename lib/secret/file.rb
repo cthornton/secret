@@ -2,7 +2,7 @@ module Secret
 
   # Handles file operations. Uses Ruby's internal file locking mechanisms.
   class File
-    # include Secret::Encryption
+    include Secret::Encryption
 
     attr_reader :container, :identifier
 
@@ -108,6 +108,9 @@ module Secret
           # Rename tmp file to backup file now we know contents are sane
           ::File.rename(tmp_file_path, backup_file_path)
           
+          # Remove encryption indicator
+          remove_encrypted_indicator
+          
           # Truncate file contents to zero bytes
           f.truncate 0
           
@@ -153,6 +156,11 @@ module Secret
   
     end
 
+    # Delete the contents of this file, along with any other associated files.
+    def delete!
+      ::File.delete(file_path) if exist?
+      Dir[file_path + "*"].each {|f| ::File.delete f }
+    end
 
     private
 
