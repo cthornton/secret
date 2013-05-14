@@ -1,15 +1,17 @@
 require 'rubygems'
 require 'bundler/setup'
-require 'win32/process'
+# require 'win32/process'
 
 require 'secret'
 
 Secret.configure_default 'secrets'
-
 container = Secret.default
 
-f = container.file("path/to/file")
-f.stash "Hello World!"
+container.stash "key.crt", "The contents of this key!"
+
+puts "Contents of key: '#{container.contents 'key.crt'}'"
+
+
 
 exit(0)
 container.something.stash "My Secret Text!"

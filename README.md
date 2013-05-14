@@ -33,6 +33,15 @@ puts secret.some_key.contents
 secret.some_key.stream do |f|
     f.seek 1, IO::SEEK_CUR
 end
+
+# Support for nested directories
+file = secret.file "certs/file.crt"
+file.stash "Contents of CA File"
+puts file.contents
+
+# Also support for shorthand syntax
+secret.stash "certs/file.key", "Contents of this key file!"
+puts secret.contents "certs/file.key"
 ```
 
 ## How Secure is It?
@@ -47,6 +56,5 @@ However, this will **not** protect you against:
 * Arbitrary code execution attacks by the owner (i.e. an `eval()` gone wrong)
 
 ## Other Features
-This gem also includes locking support, meaning that it should (hopefully) be resillient against multiple processes
-writing to a file. The primary reason for this is because I really wanted to try file locking. However, don't do
-anything too tricky and you should be okay.
+This gem also includes locking support, meaning that it will be resillient against multiple processes
+writing to a file. This will **not** lock multiple threads from the same process.

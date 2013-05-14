@@ -23,6 +23,15 @@ module Secret
       end
       raise ArgumentError, "Directory '#{directory}' is not writeable!" unless ::File.writable?(directory)
     end
+    
+    # Stashes the contents of a file
+    def stash(path, contents)
+      file(path).stash(contents)
+    end
+    
+    def contents(path)
+      file(path).contents
+    end
 
     # Gets a file stored in the container.
     # @param [Symbol] filename the name of the file.

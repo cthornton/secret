@@ -20,4 +20,4 @@ tmp
 .idea
 *.komodoproject
 .komodotools
-#test/secrets/*
+test/secrets/*
