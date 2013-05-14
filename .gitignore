@@ -18,3 +18,6 @@ tmp
 
 
 .idea
+*.komodoproject
+.komodotools
+#test/secrets/*

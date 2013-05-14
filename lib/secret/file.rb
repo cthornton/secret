@@ -1,30 +1,19 @@
 module Secret
 
-  # Handles file operations.
-  #
-  # Note that locking operations are not perfect!
+  # Handles file operations. Uses Ruby's internal file locking mechanisms.
   class File
-    include Secret::Locking
-
     # include Secret::Encryption
 
     attr_reader :container, :identifier
-
-    # Lock timeout in MS. Defaults to 5000 MS
-    attr_accessor :lock_timeout_ms
-
-    # Whether this current object holds the lock over the file.
-    # @return [Boolean] TRUE if this object was the one that holds the lock (i.e. created the lock), FALSE if another
-    #   object holds the lock, or the file simply isn't locked.
-    attr_reader :owns_lock
 
     # Creates a new secret file. The specified identifier doesn't already need to exist.
     # @param [Secret::Container] container the container object
     # @param [Symbol] identifier an unique identifier for this container
     def initialize(container, identifier)
       raise ArgumentError, "Container must be a Secret::Container object" unless container.is_a?(Secret::Container)
-      @container = container; @identifier = identifier; @owns_lock = false
-      @lock_timeout_ms = Secret::Locking::DEFAULT_LOCK_WAIT_MS
+      @container = container; @identifier = identifier
+      touch!
+      ensure_writeable!
     end
 
     # Checks whether this file actually exists or not
@@ -39,7 +28,7 @@ module Secret
     # @param [String] mode the mode for this file. Currently defaults to 'r+', which is read-write, with the
     #   file pointer at the beginning of the file.
     # @return [IO] an IO stream to this file, if not using a block
-    # @note This completely bypasses any internal locking mechanisms if not using a block!
+    # @note Uses an exclusive lock on this file
     # @example
     #     file = container.some_file
     #
@@ -52,13 +41,17 @@ module Secret
     #     file.stream do |f|
     #       f.write "Hello World!"
     #     end
-    def stream(mode = 'r+', &block)
+    def stream(mode = 'r', &block)
       touch!
-      return ::File.open(file_path, mode, Secret::CHMOD_MODE)  unless block_given?
-      wait_for_unlock(true, lock_timeout_ms) do
-        io = ::File.open(file_path, mode, Secret::CHMOD_MODE)
-        block.call(io)
-        io.close unless io.closed?
+      ensure_writeable!
+      return ::File.open(file_path, mode, container.chmod_mode)  unless block_given?
+      ::File.open(file_path, mode, container.chmod_mode) do |f|
+        begin
+          f.flock(::File::LOCK_EX) # Lock with exclusive mode
+          block.call(f)
+        ensure
+          f.flock(::File::LOCK_UN)
+        end
       end
     end
 
@@ -67,10 +60,9 @@ module Secret
     # file just so happens to be empty.
     # @return [String] the contents of the file
     def contents
-      wait_for_unlock(false, lock_timeout_ms) do
-        io = stream
-        str = io.read
-        io.close
+      str = nil
+      stream 'r' do |f|
+        str = f.read
       end
       return str
     end
@@ -80,7 +72,7 @@ module Secret
     # @return [Boolean] true if an empty file was created, false if the file already existed.
     def touch!
       unless exist?
-        ::File.open(file_path, 'w') {}
+        ::File.open(file_path, 'w', container.chmod_mode) {}
         secure!
         return true
       end
@@ -91,7 +83,7 @@ module Secret
     # @raise [IOError] if the file doesn't exist on the server.
     def secure!
       raise IOError, "File doesn't exist" unless exist?
-      ::File.chmod(Secret::CHMOD_MODE, file_path)
+      ::File.chmod(container.chmod_mode, file_path)
     end
 
 
@@ -102,60 +94,63 @@ module Secret
     # @raise [ArgumentError] if content is anything other than a String object!
     def stash(content)
       raise ArgumentError, "Content must be a String (was type of type #{content.class.name})" unless content.is_a?(String)
-
-      # Get an exclusive lock
-      wait_for_unlock(true, lock_timeout_ms) do
-        touch!
-
-        # Think of this as a beginning of a transaction.
-
-        # Open a temporary file for writing, and close it immediately
-        ::File.open(tmp_file_path, "w", Secret::CHMOD_MODE){|f| f.write content }
-
-        # Rename the existing file path
-        ::File.rename(file_path, backup_file_path)
-
-        # Now rename the temporary file to the correct file
-        ::File.rename(tmp_file_path, file_path)
-
-        # Delete the backup
+      touch!
+      ensure_writeable!
+      
+      # Think of this as a beginning of a transaction.
+      ::File.open(file_path, 'a', container.chmod_mode) do |f|
+        begin
+          f.flock(::File::LOCK_EX)
+  
+          # Open a temporary file for writing, and close it immediately
+          ::File.open(tmp_file_path, "w", container.chmod_mode){|f| f.write content }
+  
+          # Rename tmp file to backup file now we know contents are sane
+          ::File.rename(tmp_file_path, backup_file_path)
+          
+          # Truncate file contents to zero bytes
+          f.truncate 0
+          
+          # Write content
+          f.write content
+        ensure
+          # Now unlock file!
+          f.flock(::File::LOCK_UN)
+        end
+        
+        # Delete backup file
         ::File.delete(backup_file_path)
+      end
 
-        # Committed! Secure it just in case
-        secure!
+      # Committed! Secure it just in case
+      secure!
+    end
+    
+    def ensure_writeable!
+      unless ::File.writable?(file_path)
+        raise FileUnreadableError, "File is not writeable - perhaps it was created by a different process?"
       end
     end
 
     # Attempts to restore a backup (i.e. if the computer crashed while doing a stash command)
     # @return [Boolean] true if the backup was successfully restored, false otherwise
     def restore_backup!
-      return false if locked?
       return false unless ::File.exist?(backup_file_path)
-
-      # Ideally we want to get an exclusive lock when doing this!
-      wait_for_unlock(true, lock_timeout_ms) do
-        # If the file actually exists, then the backup file probably wasn't deleted, so just
-        # delete the backup file.
-        if ::File.exist?(file_path)
-          ::File.delete(backup_file_path)
-          return true
-
-        # Otherwise, the temporary file probably wasn't renamed, so restore the backup and delete the temporary file
-        # if it exists. It's possible the file was corrupted in the middle of writing, so it is better to resort
-        # to an old and complete file rather than a new and possibly corrupted file.
-        else
-          ::File.rename(backup_file_path, file_path)
-          ::File.delete(tmp_file_path) if ::File.exist?(tmp_file_path)
-          return true
+      
+      # We know backup exists, so let's write to the file. We want to truncate file contents.
+      # Now copy file contents over from the backup file. We use this method to use locking.
+      ::File.open(file_path, 'w', container.chmod_mode) do |f|
+        begin
+          f.flock ::File::LOCK_EX
+          ::File.open(backup_file_path, 'r', container.chmod_mode) do |b|
+            f.write b.read
+          end
+        ensure
+          f.flock ::File::LOCK_UN
         end
       end
-    end
-
-    protected
-
-    # Gets the path of the lock file
-    def lock_file_path
-      return file_path + '.lock'
+      return true
+  
     end
 
 
@@ -179,9 +174,6 @@ module Secret
     def backup_file_path
       return file_path + '.bak'
     end
-
-
-
 
   end
 end

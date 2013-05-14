@@ -1,13 +1,14 @@
 module Secret
   class Container
 
-    attr_reader :directory, :files
+    attr_reader :directory, :files, :chmod_mode
 
     # Initializes a container. Does significant checking on the directory to ensure it is writeable and it exists.
     # @param [String] directory the directory to the container
     # @param [Boolean] auto_create if true, will attempt to create the directory if it does not exist.
-    def initialize(directory, auto_create = true)
+    def initialize(directory, auto_create = true, chmod = Secret::CHMOD_MODE)
       @directory = directory
+      @chmod_mode = chmod
 
       @files = {}
 
@@ -18,7 +19,7 @@ module Secret
       # Now make our directory if auto_create
       else
         raise ArgumentError, "Specified directory '#{directory}' does not exist!" unless auto_create
-        Dir.mkdir(directory, Secret::CHMOD_MODE) # Only give read/write access to this user
+        FileUtils.mkdir_p(directory, :mode => chmod_mode) # Only give read/write access to this user
       end
       raise ArgumentError, "Directory '#{directory}' is not writeable!" unless ::File.writable?(directory)
     end
@@ -27,12 +28,21 @@ module Secret
     # @param [Symbol] filename the name of the file.
     # @return [Secret::File] a secret file
     def file(filename)
-      fn = filename.to_sym
+      fn = filename.to_s
       f  = files[fn]
       return f unless f.nil?
-      f  = Secret::File.new(self, filename)
+      
+      d = ::File.dirname(fn)
+      container = d == "." ? self : dir(d)
+      
+      f  = Secret::File.new(container, ::File.basename(filename) + Secret::FILE_EXT)
       files[fn] = f
       return f
+    end
+    
+    # Another container within the directory
+    def dir(name)
+      Container.new ::File.join(directory, name), true, chmod_mode
     end
 
     def method_missing(meth, *args, &block)

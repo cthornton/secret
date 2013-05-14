@@ -1,3 +1,6 @@
 source 'https://rubygems.org'
 
 gem 'secret', path: '../'
+
+#gem 'ffi'
+#gem 'win32-process'

@@ -1,5 +1,4 @@
 require "secret/version"
-require "secret/locking"
 require "secret/file"
 require "secret/container"
 
@@ -7,12 +6,10 @@ module Secret
 
   # The chmod mode to use for files.
   CHMOD_MODE = 0700
-
-  # Gets the UID of the current process
-  def self.uid
-    return Process.uid
-  end
-
+  
+  # The file extension for secret files
+  FILE_EXT = ".sfile"
+  
   # Gets the default container
   # @return [Secret::Container] the default container
   def self.default
@@ -31,6 +28,7 @@ module Secret
     end
   end
 
-  class FileLockedError < Exception; end
+  class FileUnreadableError < Exception; end
+
 
 end
